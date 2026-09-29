@@ -1,0 +1,117 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  DENIED
+  ESCALATED
+  COMPLETED
+}
+
+enum DecisionType {
+  APPROVED
+  DENIED
+  ESCALATED
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  publicId  String   @unique
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  orders    Order[]
+  refunds   RefundRequest[]
+}
+
+model Order {
+  id         String   @id @default(cuid())
+  publicId   String   @unique
+  customerId String
+  amount     Decimal  @db.Decimal(12, 2)
+  status     String   @default("DELIVERED")
+  orderDate  DateTime
+  createdAt  DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items      OrderItem[]
+  refunds    RefundRequest[]
+  @@index([customerId, orderDate])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  productName String
+  quantity    Int
+  price       Decimal @db.Decimal(12, 2)
+  finalSale   Boolean @default(false)
+  condition   String  @default("NEW")
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  @@index([orderId])
+}
+
+model RefundRequest {
+  id          String       @id @default(cuid())
+  publicId    String       @unique
+  idempotencyKey String?  @unique
+  customerId  String
+  orderId     String
+  message     String       @db.Text
+  amount      Decimal      @db.Decimal(12, 2)
+  status      RefundStatus @default(PENDING)
+  decision    DecisionType?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  order       Order        @relation(fields: [orderId], references: [id])
+  evaluation  PolicyEvaluation?
+  aiAnalysis  AIAnalysis?
+  auditLogs   AuditLog[]
+  @@index([status, createdAt(sort: Desc)])
+  @@index([customerId, createdAt(sort: Desc)])
+  @@index([orderId])
+}
+
+model PolicyEvaluation {
+  id              String        @id @default(cuid())
+  refundRequestId String        @unique
+  eligible        Boolean
+  flags           Json
+  rules           Json
+  evaluatedAt     DateTime      @default(now())
+  refundRequest   RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+}
+
+model AIAnalysis {
+  id              String        @id @default(cuid())
+  refundRequestId String        @unique
+  classification  String
+  recommendation  DecisionType
+  summary         String        @db.Text
+  customerResponse String       @db.Text
+  flags           Json
+  model           String
+  promptVersion   String
+  latencyMs       Int?
+  createdAt       DateTime      @default(now())
+  refundRequest   RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id              String        @id @default(cuid())
+  refundRequestId String
+  event           String
+  actor           String
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  refundRequest   RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+  @@index([refundRequestId, createdAt])
+}

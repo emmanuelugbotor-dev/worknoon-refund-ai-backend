@@ -1,0 +1,30 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import pinoHttp from 'pino-http';
+import { env } from './config/env';
+import { apiLimiter } from './middleware/security';
+import { errorHandler, requestContext } from './middleware/error';
+import refundRoutes from './routes/refund.routes';
+import customerRoutes from './routes/customer.routes';
+import orderRoutes from './routes/order.routes';
+import authRoutes from './routes/auth.routes';
+
+const app=express();
+app.set('trust proxy',1);
+app.use(helmet());
+app.use(cors({origin:env.CORS_ORIGIN.split(',').map(x=>x.trim()), credentials:true}));
+app.use(express.json({limit:'64kb'}));
+app.use(requestContext);
+app.use(pinoHttp());
+app.use(apiLimiter);
+app.get('/health',(_req,res)=>res.json({status:'healthy',service:'refund-api'}));
+app.get('/ready',(_req,res)=>res.json({status:'ready'}));
+app.get('/docs',(_req,res)=>res.json({openapi:'3.0.0',info:{title:'WORKNOON Refund API',version:'1.0.0'},paths:{'/refunds':{post:{summary:'Create refund request'},get:{summary:'List refund requests'}},'/refunds/stats':{get:{summary:'Dashboard stats'}},'/refunds/{id}':{get:{summary:'Refund details'}}}}));
+app.use('/auth',authRoutes);
+app.use('/refunds',refundRoutes);
+app.use('/customers',customerRoutes);
+app.use('/orders',orderRoutes);
+app.use(errorHandler);
+
+app.listen(env.PORT,()=>console.log(`Refund API listening on ${env.PORT}`));
